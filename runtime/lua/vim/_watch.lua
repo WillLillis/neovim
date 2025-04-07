@@ -62,6 +62,7 @@ function M.watch(path, opts, callback)
   vim.validate('path', path, 'string')
   vim.validate('opts', opts, 'table', true)
   vim.validate('callback', callback, 'function')
+  vim.notify("In watch()" .. vim.inspect(path) .. vim.inspect(opts) .. vim.inspect(callback))
 
   opts = opts or {}
 
@@ -70,6 +71,7 @@ function M.watch(path, opts, callback)
   local handle = assert(uv.new_fs_event())
 
   local _, start_err, start_errname = handle:start(path, uvflags, function(err, filename, events)
+    vim.notify("In watch() callback" .. vim.inspect(err) .. vim.inspect(filename) .. vim.inspect(events))
     assert(not err, err)
     local fullpath = path
     if filename then
@@ -77,6 +79,7 @@ function M.watch(path, opts, callback)
     end
 
     if skip(fullpath, opts) then
+      vim.notify('skipping: ' .. fullpath, vim.log.levels.DEBUG)
       return
     end
 
@@ -101,6 +104,8 @@ function M.watch(path, opts, callback)
       -- Server may send "workspace/didChangeWatchedFiles" with nonexistent `baseUri` path.
       -- This is mostly a placeholder until we have `nvim_log` API.
       vim.notify_once(('watch.watch: %s'):format(start_err), vim.log.levels.INFO)
+    else
+      vim.notify('watch error: ' .. start_err, vim.log.levels.ERROR)
     end
     -- TODO(justinmk): log important errors once we have `nvim_log` API.
     return function() end
@@ -128,6 +133,7 @@ function M.watchdirs(path, opts, callback)
   vim.validate('path', path, 'string')
   vim.validate('opts', opts, 'table', true)
   vim.validate('callback', callback, 'function')
+  vim.notify("In watchdirs()" .. vim.inspect(path) .. vim.inspect(opts) .. vim.inspect(callback))
 
   opts = opts or {}
   local debounce = opts.debounce or 500
@@ -206,6 +212,8 @@ function M.watchdirs(path, opts, callback)
       -- Server may send "workspace/didChangeWatchedFiles" with nonexistent `baseUri` path.
       -- This is mostly a placeholder until we have `nvim_log` API.
       vim.notify_once(('watch.watchdirs: %s'):format(start_err), vim.log.levels.INFO)
+    else
+      vim.notify('watchdirs error: ' .. start_err, vim.log.levels.ERROR)
     end
     -- TODO(justinmk): log important errors once we have `nvim_log` API.
 
@@ -219,6 +227,7 @@ function M.watchdirs(path, opts, callback)
   for name, type in vim.fs.dir(path, { depth = max_depth }) do
     if type == 'directory' then
       local filepath = vim.fs.joinpath(path, name)
+      -- FIX: Removing this if check makes it work!!!!
       if not skip(filepath, opts) then
         local handle = assert(uv.new_fs_event())
         handles[filepath] = handle
@@ -282,9 +291,9 @@ end
 function M.inotify(path, opts, callback)
   local obj = vim.system({
     'inotifywait',
-    '--quiet', -- suppress startup messages
+    '--quiet',          -- suppress startup messages
     '--no-dereference', -- don't follow symlinks
-    '--monitor', -- keep listening for events forever
+    '--monitor',        -- keep listening for events forever
     '--recursive',
     '--event',
     'create',

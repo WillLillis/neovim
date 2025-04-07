@@ -64,11 +64,16 @@ function M.register(reg, client_id)
 
     if type(glob_pattern) == 'string' then
       local pattern = glob.to_lpeg(glob_pattern)
+      vim.notify('glob pattern: ' .. tostring(glob_pattern))
       if not pattern then
         error('Cannot parse pattern: ' .. glob_pattern)
       end
       for _, folder in ipairs(client.workspace_folders) do
         local base_dir = vim.uri_to_fname(folder.uri)
+        vim.notify('folder: ' .. vim.inspect(folder))
+        vim.notify('base_dir: ' .. base_dir)
+        vim.notify('pattern: ' .. vim.inspect(pattern))
+        vim.notify('kind: ' .. vim.inspect(kind))
         table.insert(watch_regs[base_dir], { pattern = pattern, kind = kind })
       end
     else
@@ -86,13 +91,17 @@ function M.register(reg, client_id)
 
   ---@param base_dir string
   local callback = function(base_dir)
+    vim.notify('GOT HERE')
     return function(fullpath, change_type)
+      vim.notify('GOT HERE 2')
       local registrations = watch_regs[base_dir]
       for _, w in ipairs(registrations) do
         local lsp_change_type = assert(
           to_lsp_change_type[change_type],
           'Must receive change type Created, Changed or Deleted'
         )
+        vim.notify('change_type: ' .. vim.inspect(change_type))
+        vim.notify('lsp_change_type: ' .. vim.inspect(lsp_change_type))
         -- e.g. match kind with Delete bit (0b0100) to Delete change_type (3)
         local kind_mask = bit.lshift(1, lsp_change_type - 1)
         local change_type_match = bit.band(w.kind, kind_mask) == kind_mask
@@ -102,6 +111,8 @@ function M.register(reg, client_id)
             uri = vim.uri_from_fname(fullpath),
             type = lsp_change_type,
           }
+          vim.notify('change: ' .. vim.inspect(change))
+          vim.notify('before change_cache: ' .. vim.inspect(change_cache))
 
           local last_type = change_cache[client_id][change.uri]
           if last_type ~= change.type then
@@ -109,13 +120,16 @@ function M.register(reg, client_id)
             table.insert(change_queues[client_id], change)
             change_cache[client_id][change.uri] = change.type
           end
+          vim.notify('after change_cache: ' .. vim.inspect(change_cache))
 
           if not queue_timers[client_id] then
+            vim.notify('got here')
             queue_timers[client_id] = vim.defer_fn(function()
               ---@type lsp.DidChangeWatchedFilesParams
               local params = {
                 changes = change_queues[client_id],
               }
+              vim.notify('in deferred fn'.. vim.inspect(params))
               client:notify(ms.workspace_didChangeWatchedFiles, params)
               queue_timers[client_id] = nil
               change_queues[client_id] = nil
@@ -134,6 +148,12 @@ function M.register(reg, client_id)
       return acc + w.pattern
     end)
 
+    vim.notify('HERE include_pattern: ' .. vim.inspect(include_pattern))
+    if include_pattern:match('/home/lillis/projects/zls_2161/src/mod.zig') then
+      vim.notify('HEY IT MATCHES')
+    end
+
+    -- vim.notify('table before: ' .. vim.inspect(cancels))
     table.insert(
       cancels[client_id][reg.id],
       M._watchfunc(base_dir, {
@@ -148,6 +168,7 @@ function M.register(reg, client_id)
         exclude_pattern = M._poll_exclude_pattern,
       }, callback(base_dir))
     )
+    -- vim.notify('table after: ' .. vim.inspect(cancels))
   end
 end
 
